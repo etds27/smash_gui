@@ -6,11 +6,14 @@ import time
 import re
 import game_mode_config
 import colors
+import stages
 
 from PIL import ImageTk, Image
 from tkinter import font
 
 character_image_folder = os.curdir + "/character_images"
+stage_image_folder = os.curdir + "/stage_images"
+stage_json = os.curdir + "/resources/stages.json"
 game_log = os.curdir + "/resources/games.txt"
 
 
@@ -92,6 +95,7 @@ class SmashGui(tk.Frame):
         """
 
         def __init__(self, smash_gui):
+            self.stage = "final_destination"
             self.selection_turn = None
             self.player_group = SelectionButtonGroup()
             self.smash_gui = smash_gui
@@ -176,6 +180,9 @@ class SmashGui(tk.Frame):
             """
             self.character_tracker[tag]["stocks"] = num
 
+        def set_stage(self, stage):
+            self.stage = stage
+
         def populate_player_frame(self):
             """
             Creates the display that shows which player is choosing their character
@@ -237,7 +244,7 @@ class SmashGui(tk.Frame):
                 'type': self.type,
                 'characters': characters,
                 'stocks': stocks,
-                'stage': 'fd'
+                'stage': self.stage
             }
 
             print("Game dict: " + str(d))
@@ -421,6 +428,45 @@ class SmashGui(tk.Frame):
             self.stock_group.set(num)
             self.smash_gui.set_stock(self.tag, num)
 
+    class StageButton:
+        def __init__(self, master, stage, smash_gui):
+            self.master = master
+            self.stage = stage
+            self.smash_gui = smash_gui
+
+            self.image_frame = ImageTk.PhotoImage(
+                Image.open(stage_image_folder + "/" + self.stage.image).resize((177, 100)))
+            self._create_on_state()
+            self._create_off_state()
+
+            for child in master.winfo_children():
+                child.bind("<Button-1>", lambda e: self._set_stage(e))
+
+        def _create_on_state(self):
+            self.on_frame = tk.Frame(self.master, bg=colors.SMASH_DARK, highlightthickness=4,
+                                     highlightbackground=colors.SMASH_DARK)
+            image = tk.Label(self.on_frame, image=self.image_frame)
+            image.image = self.image_frame
+            name = tk.Label(self.on_frame, text=self.stage.display_name)
+            name.pack(expand='yes', fill='x', anchor='s')
+            image.pack(expand='yes', fill='both')
+            for child in self.on_frame.winfo_children():
+                child.bind("<Button-1>", lambda e: self._set_stage(e))
+
+        def _create_off_state(self):
+            self.off_frame = tk.Frame(self.master)
+            image = tk.Label(self.off_frame, image=self.image_frame)
+            image.image = self.image_frame
+            name = tk.Label(self.off_frame, text=self.stage.display_name)
+            name.pack(expand='yes', fill='x', anchor='s')
+            image.pack(expand='yes', fill='both')
+
+            for child in self.off_frame.winfo_children():
+                child.bind("<Button-1>", lambda e: self._set_stage(e))
+
+        def _set_stage(self, event):
+            self.smash_gui.set_stage(self.stage.name)
+
     def _populate_interface(self):
         """
         Creates all containers the are slaved to the root of Smash Gui
@@ -432,6 +478,10 @@ class SmashGui(tk.Frame):
         self.character_canvas = tk.Canvas(self.character_frame)
         self.character_canvas.pack(side='left', fill='both', expand='yes')
         self._populate_character_frame()
+
+        # Stage Frame
+        self.stage_frame = tk.Frame(self)
+        self._populate_stage_frame()
 
         # Overview Frame
         self.overview_frame = tk.Frame(self, bg='red', height=400)
@@ -447,12 +497,14 @@ class SmashGui(tk.Frame):
 
         self.game_player_frame.grid(row=0, column=0, sticky='news')
         self.character_frame.grid(row=1, column=0, sticky='news')
-        self.overview_frame.grid(row=2, column=0, sticky='news')
-        self.game_log_frame.grid(row=0, column=1, rowspan=3, sticky='news')
+        self.stage_frame.grid(row=2, column=0, sticky='news')
+        self.overview_frame.grid(row=3, column=0, sticky='news')
+        self.game_log_frame.grid(row=0, column=1, rowspan=4, sticky='news')
 
         self.grid_rowconfigure(0, weight=5)
         self.grid_rowconfigure(1, weight=80)
         self.grid_rowconfigure(2, weight=15)
+        self.grid_rowconfigure(3, weight=15)
         self.grid_columnconfigure(0, weight=1)
 
     def _populate_character_frame(self):
@@ -540,6 +592,7 @@ class SmashGui(tk.Frame):
             col = int(c % self.recommended_cols)
 
             gui.grid(column=col, row=row)
+            # self.character_icon_frame.grid_columnconfigure(col, weight=1)
 
     def _sort_character_gui(self, sorting_comparator=None):
         """
@@ -605,6 +658,20 @@ class SmashGui(tk.Frame):
         @staticmethod
         def compare(character_gui):
             return character_gui.character.game
+
+    def _populate_stage_frame(self):
+        self.stage_group = SelectionButtonGroup()
+        stage_order = ['battlefield', 'final_destination', 'small_battlefield', 'other']
+        stage_dict = stages.Stage.get_stages(stage_json)
+
+        for stage_tag in stage_order:
+            selection_gui = SelectionButtonGroup.SelectionFrame(self.stage_frame, self.stage_group, value=stage_tag)
+            stage_gui = SmashGui.StageButton(selection_gui, stage_dict[stage_tag], self)
+            selection_gui.set_on_display(stage_gui.on_frame)
+            selection_gui.set_off_display(stage_gui.off_frame)
+            selection_gui.pack(side='left', expand='yes', fill='both')
+
+        self.set_stage("final_destination")
 
     def _populate_overview_frame(self):
         """
@@ -794,6 +861,11 @@ class SmashGui(tk.Frame):
         self.game_handler.set_stock(tag, num)
         self._update_overview_frame()
 
+    def set_stage(self, stage):
+        print("SmashGui: set_stage: Setting stage to: " + str(stage))
+        self.game_handler.set_stage(stage)
+        self.stage_group.set(stage)
+
     def select_character(self, character_gui):
         self.game_handler.select_character(character_gui)
         self._update_overview_frame()
@@ -805,6 +877,7 @@ class CharacterGui(tk.Frame):
     Contains the character image and name
     Visually tracks which player has selected the characted
     """
+
     def __init__(self, character, parent, smash_gui):
         super().__init__(parent)
 
@@ -870,6 +943,7 @@ class SelectionButtonGroup:
     """
     This class is basiccally a radio button class.  But they look like buttons instead of radio buttons
     """
+
     def __init__(self):
         self.selected_index = 0
         self.button_list = []
@@ -902,6 +976,30 @@ class SelectionButtonGroup:
                 button.set_selected_state()
             else:
                 button.set_non_selected_state()
+
+    class SelectionFrame(tk.Frame):
+
+        def __init__(self, master, selection_group, value=None):
+            super().__init__(master, bg='green')
+            self.value = value
+            self.on_display = None
+            self.off_display = None
+
+            selection_group.add(self)
+
+        def set_on_display(self, on_display):
+            self.on_display = on_display
+
+        def set_off_display(self, off_display):
+            self.off_display = off_display
+
+        def set_selected_state(self):
+            self.off_display.pack_forget()
+            self.on_display.pack(expand='yes', fill='both')
+
+        def set_non_selected_state(self):
+            self.on_display.pack_forget()
+            self.off_display.pack(expand='yes', fill='both')
 
     class SelectionButton(tk.Button):
         def __init__(self, parent, button_group, value=None, abg='black', afg='white', bg='white', fg='black',
